@@ -1,113 +1,136 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { type ReactNode, useState } from "react";
 import {
-  LayoutDashboard, KeyRound, MonitorSmartphone, Users, BarChart3,
-  Package, FileCode2, Container, Settings, LogOut, CreditCard, Bell, ShieldCheck,
+  LayoutDashboard,
+  KeyRound,
+  MonitorSmartphone,
+  Users,
+  BarChart3,
+  Package,
+  Settings,
+  TerminalSquare,
+  CreditCard,
+  LogOut,
+  Menu,
+  X,
 } from "lucide-react";
-import { useStore } from "../lib/store";
-import { Badge } from "./ui";
 import { cn } from "../utils/cn";
 
-const nav = [
-  { to: "/dashboard",  label: "Dashboard",          icon: LayoutDashboard },
-  { to: "/licenses",   label: "Licenses",           icon: KeyRound },
-  { to: "/activations",label: "Activations",        icon: MonitorSmartphone },
-  { to: "/customers",  label: "Customers",          icon: Users },
-  { to: "/analytics",  label: "Usage Analytics",    icon: BarChart3 },
-  { to: "/plans",      label: "Subscription Plans", icon: Package },
-  { to: "/api-docs",   label: "API Reference",      icon: FileCode2 },
-  { to: "/deployment", label: "Deployment",         icon: Container },
-  { to: "/settings",   label: "Settings",           icon: Settings },
+export type Page =
+  | "dashboard"
+  | "licenses"
+  | "activations"
+  | "customers"
+  | "analytics"
+  | "plans"
+  | "simulator"
+  | "settings";
+
+const NAV: { id: Page; label: string; icon: typeof LayoutDashboard }[] = [
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "licenses", label: "Licenses", icon: KeyRound },
+  { id: "activations", label: "Activations", icon: MonitorSmartphone },
+  { id: "customers", label: "Customers", icon: Users },
+  { id: "analytics", label: "Usage Analytics", icon: BarChart3 },
+  { id: "plans", label: "Subscription Plans", icon: Package },
+  { id: "simulator", label: "Desktop Simulator", icon: TerminalSquare },
+  { id: "settings", label: "Settings", icon: Settings },
 ];
 
-export default function Layout() {
-  const { user, logout, data } = useStore();
-  const nav2 = useNavigate();
+export function Layout({
+  page,
+  setPage,
+  onLogout,
+  children,
+}: {
+  page: Page;
+  setPage: (p: Page) => void;
+  onLogout: () => void;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
 
-  const blockedCount = data.licenses.filter(l => l.status === "blocked").length;
-  const expiringSoon = data.licenses.filter(l => {
-    if (!l.expires_at || l.status !== "active") return false;
-    const d = (new Date(l.expires_at).getTime() - Date.now()) / 86400000;
-    return d >= 0 && d <= 14;
-  }).length;
+  const sidebar = (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-3 px-5 py-5">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-lg shadow-indigo-500/30">
+          <CreditCard className="h-5 w-5 text-white" />
+        </div>
+        <div>
+          <p className="text-sm font-bold text-white">PVC License</p>
+          <p className="text-[11px] text-slate-400">Management Platform</p>
+        </div>
+      </div>
+      <nav className="mt-2 flex-1 space-y-1 px-3">
+        {NAV.map((item) => {
+          const Icon = item.icon;
+          const active = page === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => {
+                setPage(item.id);
+                setOpen(false);
+              }}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                active ? "bg-indigo-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800 hover:text-white",
+              )}
+            >
+              <Icon className="h-[18px] w-[18px]" />
+              {item.label}
+            </button>
+          );
+        })}
+      </nav>
+      <div className="border-t border-slate-800 p-3">
+        <button
+          onClick={onLogout}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-800 hover:text-white"
+        >
+          <LogOut className="h-[18px] w-[18px]" />
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="flex h-screen bg-slate-50">
-      {/* Sidebar */}
-      <aside className="hidden md:flex w-64 flex-col bg-white border-r border-slate-200">
-        <div className="h-16 flex items-center gap-2.5 px-5 border-b border-slate-200">
-          <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white shadow-md">
-            <CreditCard className="h-5 w-5" />
-          </div>
-          <div>
-            <div className="font-bold text-slate-900 leading-tight">PVC License</div>
-            <div className="text-[10px] text-slate-500 leading-tight uppercase tracking-wide">Admin Console</div>
-          </div>
-        </div>
-        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-          {nav.map(item => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition group",
-                  isActive
-                    ? "bg-indigo-50 text-indigo-700 font-semibold"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                )
-              }
-            >
-              <item.icon className="h-4 w-4" />
-              <span className="flex-1">{item.label}</span>
-              {item.to === "/licenses" && blockedCount > 0 && (
-                <span className="text-[10px] bg-rose-100 text-rose-700 px-1.5 rounded">{blockedCount}</span>
-              )}
-            </NavLink>
-          ))}
-        </nav>
-        <div className="p-3 border-t border-slate-200">
-          <div className="flex items-center gap-3 px-2 py-2 rounded-lg">
-            <div className="h-9 w-9 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-white flex items-center justify-center text-sm font-semibold">
-              {user?.email[0]?.toUpperCase() ?? "A"}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-slate-900 truncate">{user?.name ?? "Admin"}</div>
-              <div className="text-xs text-slate-500 truncate">{user?.email}</div>
-            </div>
-            <button
-              onClick={() => { logout(); nav2("/login"); }}
-              className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 hover:text-rose-600"
-              title="Log out"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      </aside>
+    <div className="min-h-screen bg-slate-50">
+      {/* Desktop sidebar */}
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 bg-slate-900 lg:block">{sidebar}</aside>
 
-      {/* Main */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center px-6 gap-4">
-          <div className="flex-1 flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-emerald-600" />
-            <span className="text-sm text-slate-600">Production cluster — <span className="text-emerald-700 font-medium">healthy</span></span>
-          </div>
-          <div className="flex items-center gap-2">
-            {expiringSoon > 0 && (
-              <Badge tone="amber">{expiringSoon} expiring ≤ 14d</Badge>
-            )}
-            {blockedCount > 0 && (
-              <Badge tone="rose">{blockedCount} blocked</Badge>
-            )}
-            <button className="relative p-2 rounded-lg text-slate-500 hover:bg-slate-100">
-              <Bell className="h-4 w-4" />
-              <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-indigo-500" />
+      {/* Mobile sidebar */}
+      {open && (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <div className="absolute inset-0 bg-slate-900/50" onClick={() => setOpen(false)} />
+          <aside className="absolute inset-y-0 left-0 w-64 bg-slate-900">
+            <button onClick={() => setOpen(false)} className="absolute right-3 top-4 text-slate-400">
+              <X className="h-5 w-5" />
             </button>
+            {sidebar}
+          </aside>
+        </div>
+      )}
+
+      <div className="lg:pl-64">
+        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur lg:px-8">
+          <button onClick={() => setOpen(true)} className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 lg:hidden">
+            <Menu className="h-5 w-5" />
+          </button>
+          <h1 className="text-lg font-semibold capitalize text-slate-900">
+            {NAV.find((n) => n.id === page)?.label}
+          </h1>
+          <div className="ml-auto flex items-center gap-3">
+            <div className="hidden text-right sm:block">
+              <p className="text-sm font-medium text-slate-700">Admin User</p>
+              <p className="text-xs text-slate-400">admin@pvclicense.io</p>
+            </div>
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-sm font-bold text-white">
+              A
+            </div>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto">
-          <Outlet />
-        </main>
+        <main className="mx-auto max-w-7xl px-4 py-6 lg:px-8">{children}</main>
       </div>
     </div>
   );

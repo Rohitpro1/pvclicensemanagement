@@ -1,50 +1,53 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { StoreProvider, useStore } from "./lib/store";
-import Layout from "./components/Layout";
-import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
-import Licenses from "./pages/Licenses";
-import Activations from "./pages/Activations";
-import Customers from "./pages/Customers";
-import Analytics from "./pages/Analytics";
-import Plans from "./pages/Plans";
-import ApiDocs from "./pages/ApiDocs";
-import Deployment from "./pages/Deployment";
-import Settings from "./pages/Settings";
-
-function Protected({ children }: { children: React.ReactNode }) {
-  const { user } = useStore();
-  if (!user) return <Navigate to="/login" replace />;
-  return <>{children}</>;
-}
-
-function Public({ children }: { children: React.ReactNode }) {
-  const { user } = useStore();
-  if (user) return <Navigate to="/dashboard" replace />;
-  return <>{children}</>;
-}
+import { useEffect, useState } from "react";
+import { Layout, type Page } from "./components/Layout";
+import { Login } from "./pages/Login";
+import { Dashboard } from "./pages/Dashboard";
+import { Licenses } from "./pages/Licenses";
+import { Activations } from "./pages/Activations";
+import { Customers } from "./pages/Customers";
+import { Analytics } from "./pages/Analytics";
+import { Plans } from "./pages/Plans";
+import { Simulator } from "./pages/Simulator";
+import { Settings } from "./pages/Settings";
+import { hasSession, logout, restoreSession } from "./lib/session";
 
 export default function App() {
+  const [authed, setAuthed] = useState(() => hasSession());
+  const [page, setPage] = useState<Page>("dashboard");
+
+  // Restore data when a JWT session already exists (e.g. after refresh)
+  useEffect(() => {
+    if (authed) restoreSession();
+  }, [authed]);
+
+  // Auto-logout when the API reports an expired / invalid token
+  useEffect(() => {
+    const handler = () => setAuthed(false);
+    window.addEventListener("pvc:unauthorized", handler);
+    return () => window.removeEventListener("pvc:unauthorized", handler);
+  }, []);
+
+  if (!authed) {
+    return <Login onLogin={() => setAuthed(true)} />;
+  }
+
   return (
-    <StoreProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Public><Login /></Public>} />
-          <Route element={<Protected><Layout /></Protected>}>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard"   element={<Dashboard />} />
-            <Route path="/licenses"    element={<Licenses />} />
-            <Route path="/activations" element={<Activations />} />
-            <Route path="/customers"   element={<Customers />} />
-            <Route path="/analytics"   element={<Analytics />} />
-            <Route path="/plans"       element={<Plans />} />
-            <Route path="/api-docs"    element={<ApiDocs />} />
-            <Route path="/deployment"  element={<Deployment />} />
-            <Route path="/settings"    element={<Settings />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </StoreProvider>
+    <Layout
+      page={page}
+      setPage={setPage}
+      onLogout={() => {
+        logout();
+        setAuthed(false);
+      }}
+    >
+      {page === "dashboard" && <Dashboard go={setPage} />}
+      {page === "licenses" && <Licenses />}
+      {page === "activations" && <Activations />}
+      {page === "customers" && <Customers />}
+      {page === "analytics" && <Analytics />}
+      {page === "plans" && <Plans />}
+      {page === "simulator" && <Simulator />}
+      {page === "settings" && <Settings />}
+    </Layout>
   );
 }

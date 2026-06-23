@@ -1,35 +1,32 @@
-import { useMemo } from "react";
-import { Link } from "react-router-dom";
 import {
-  KeyRound, CheckCircle2, XCircle, Ban, MonitorSmartphone, CreditCard, Printer,
-  TrendingUp, AlertTriangle, ArrowUpRight, Activity,
-} from "lucide-react";
-import {
-  AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid,
-  BarChart, Bar, Legend, PieChart, Pie, Cell,
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from "recharts";
-import { useStore } from "../lib/store";
-import { Card, CardHeader, Badge } from "../components/ui";
-import { format, formatDistanceToNow, subDays, startOfDay, isSameDay } from "date-fns";
+import { KeyRound, CheckCircle2, Clock, Ban, MonitorSmartphone, IdCard, Printer, AlertTriangle } from "lucide-react";
+import { useDB } from "../lib/hooks";
+import { metrics, expiringSoon, topCustomers, dailySeries, usageByType } from "../lib/analytics";
+import { Card, StatusBadge, TypeBadge } from "../components/ui";
+import { fmtDate, daysBetweenLabel } from "../lib/dashboardUtils";
 
-function StatCard({ icon: Icon, label, value, tone = "indigo", hint }: { icon: any; label: string; value: string | number; tone?: string; hint?: string }) {
-  const tones: Record<string, string> = {
-    indigo: "bg-indigo-50 text-indigo-600",
-    emerald: "bg-emerald-50 text-emerald-600",
-    amber: "bg-amber-50 text-amber-600",
-    rose: "bg-rose-50 text-rose-600",
-    violet: "bg-violet-50 text-violet-600",
-    blue: "bg-blue-50 text-blue-600",
-  };
+function Stat({ icon: Icon, label, value, tone }: { icon: typeof KeyRound; label: string; value: number | string; tone: string }) {
   return (
     <Card className="p-5">
-      <div className="flex items-start justify-between">
+      <div className="flex items-center justify-between">
         <div>
-          <div className="text-xs font-medium text-slate-500 uppercase tracking-wide">{label}</div>
-          <div className="mt-2 text-3xl font-bold text-slate-900">{value}</div>
-          {hint && <div className="mt-1 text-xs text-slate-500">{hint}</div>}
+          <p className="text-sm text-slate-500">{label}</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{value}</p>
         </div>
-        <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${tones[tone]}`}>
+        <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${tone}`}>
           <Icon className="h-5 w-5" />
         </div>
       </div>
@@ -37,225 +34,156 @@ function StatCard({ icon: Icon, label, value, tone = "indigo", hint }: { icon: a
   );
 }
 
-export default function Dashboard() {
-  const { data } = useStore();
-  const { licenses, activations, usage, customers } = data;
+const PIE_COLORS = ["#6366f1", "#06b6d4", "#f59e0b", "#ec4899"];
 
-  const stats = useMemo(() => {
-    const today = new Date();
-    const isToday = (iso: string) => isSameDay(new Date(iso), today);
-
-    const generatedToday = usage.filter(u => u.event_type === "CARD_GENERATED" && isToday(u.created_at)).reduce((s, u) => s + u.event_count, 0);
-    const printedToday = usage.filter(u => u.event_type === "CARD_PRINTED" && isToday(u.created_at)).reduce((s, u) => s + u.event_count, 0);
-
-    return {
-      total: licenses.length,
-      active: licenses.filter(l => l.status === "active").length,
-      expired: licenses.filter(l => l.status === "expired").length,
-      blocked: licenses.filter(l => l.status === "blocked").length,
-      activations: activations.length,
-      generatedToday,
-      printedToday,
-    };
-  }, [licenses, activations, usage]);
-
-  // 14-day series
-  const series14 = useMemo(() => {
-    const days = Array.from({ length: 14 }).map((_, i) => startOfDay(subDays(new Date(), 13 - i)));
-    return days.map(d => {
-      const dayUsage = usage.filter(u => isSameDay(new Date(u.created_at), d));
-      const dayActs = activations.filter(a => isSameDay(new Date(a.activated_at), d));
-      return {
-        date: format(d, "MMM d"),
-        Generated: dayUsage.filter(u => u.event_type === "CARD_GENERATED").reduce((s, u) => s + u.event_count, 0),
-        Printed:   dayUsage.filter(u => u.event_type === "CARD_PRINTED").reduce((s, u) => s + u.event_count, 0),
-        Activations: dayActs.length,
-      };
-    });
-  }, [usage, activations]);
-
-  const licenseMix = useMemo(() => {
-    const m = new Map<string, number>();
-    licenses.forEach(l => m.set(l.license_type, (m.get(l.license_type) ?? 0) + 1));
-    return Array.from(m).map(([name, value]) => ({ name, value }));
-  }, [licenses]);
-
-  const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
-
-  const topCustomers = useMemo(() => {
-    const m = new Map<string, number>();
-    usage.forEach(u => {
-      const lic = licenses.find(l => l.id === u.license_id);
-      if (!lic) return;
-      m.set(lic.customer_id, (m.get(lic.customer_id) ?? 0) + u.event_count);
-    });
-    return Array.from(m)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([cid, total]) => ({ customer: customers.find(c => c.id === cid), total }));
-  }, [usage, licenses, customers]);
-
-  const expiringLicenses = useMemo(() => {
-    const now = Date.now();
-    return licenses
-      .filter(l => l.expires_at && l.status === "active")
-      .map(l => ({ l, days: (new Date(l.expires_at!).getTime() - now) / 86400000 }))
-      .filter(x => x.days >= 0 && x.days <= 30)
-      .sort((a, b) => a.days - b.days)
-      .slice(0, 5);
-  }, [licenses]);
+export function Dashboard({ go }: { go: (p: "licenses" | "customers" | "analytics") => void }) {
+  const db = useDB();
+  const m = metrics(db);
+  const series = dailySeries(db, 30);
+  const expiring = expiringSoon(db, 30);
+  const top = topCustomers(db);
+  const byType = usageByType(db);
 
   return (
-    <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Operations Dashboard</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Real-time view of licenses, activations & usage across the PVC Card Generator fleet.</p>
-        </div>
-        <div className="text-sm text-slate-500">{format(new Date(), "EEEE, MMM d · h:mm a")}</div>
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <Stat icon={KeyRound} label="Total Licenses" value={m.total} tone="bg-indigo-50 text-indigo-600" />
+        <Stat icon={CheckCircle2} label="Active Licenses" value={m.active} tone="bg-emerald-50 text-emerald-600" />
+        <Stat icon={Clock} label="Expired Licenses" value={m.expired} tone="bg-amber-50 text-amber-600" />
+        <Stat icon={Ban} label="Blocked Licenses" value={m.blocked} tone="bg-rose-50 text-rose-600" />
+        <Stat icon={MonitorSmartphone} label="Total Activations" value={m.activations} tone="bg-sky-50 text-sky-600" />
+        <Stat icon={IdCard} label="Cards Generated Today" value={m.cardsToday.toLocaleString()} tone="bg-violet-50 text-violet-600" />
+        <Stat icon={Printer} label="Cards Printed Today" value={m.printsToday.toLocaleString()} tone="bg-fuchsia-50 text-fuchsia-600" />
+        <Stat icon={KeyRound} label="Disabled Licenses" value={m.disabled} tone="bg-slate-100 text-slate-600" />
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={KeyRound} label="Total Licenses" value={stats.total} tone="indigo" hint={`${stats.active} active`} />
-        <StatCard icon={CheckCircle2} label="Active" value={stats.active} tone="emerald" />
-        <StatCard icon={XCircle} label="Expired" value={stats.expired} tone="amber" />
-        <StatCard icon={Ban} label="Blocked" value={stats.blocked} tone="rose" />
-        <StatCard icon={MonitorSmartphone} label="Total Activations" value={stats.activations} tone="blue" hint="Devices currently bound" />
-        <StatCard icon={CreditCard} label="Cards Generated Today" value={stats.generatedToday.toLocaleString()} tone="violet" />
-        <StatCard icon={Printer} label="Cards Printed Today" value={stats.printedToday.toLocaleString()} tone="indigo" />
-        <StatCard icon={TrendingUp} label="Customers" value={customers.length} tone="emerald" />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-2">
-          <CardHeader title="Card generation & printing (last 14 days)" subtitle="Aggregated across all licenses" />
-          <div className="p-4 h-[300px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <Card className="p-5 lg:col-span-2">
+          <h3 className="text-sm font-semibold text-slate-900">Cards Generated (Last 30 Days)</h3>
+          <div className="mt-4 h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={series14}>
+              <AreaChart data={series.generated}>
                 <defs>
                   <linearGradient id="gGen" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#6366f1" stopOpacity={0.4} />
+                    <stop offset="0%" stopColor="#6366f1" stopOpacity={0.3} />
                     <stop offset="100%" stopColor="#6366f1" stopOpacity={0} />
                   </linearGradient>
-                  <linearGradient id="gPrn" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
-                    <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#64748b" }} />
-                <YAxis tick={{ fontSize: 11, fill: "#64748b" }} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Area type="monotone" dataKey="Generated" stroke="#6366f1" strokeWidth={2} fill="url(#gGen)" />
-                <Area type="monotone" dataKey="Printed"   stroke="#10b981" strokeWidth={2} fill="url(#gPrn)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#94a3b8" }} interval={4} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} tickLine={false} axisLine={false} width={36} />
+                <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 12 }} />
+                <Area type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={2} fill="url(#gGen)" name="Cards" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </Card>
 
-        <Card>
-          <CardHeader title="License mix" subtitle="By plan type" />
-          <div className="p-4 h-[300px]">
+        <Card className="p-5">
+          <h3 className="text-sm font-semibold text-slate-900">Usage by Event Type</h3>
+          <div className="mt-4 h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={licenseMix} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90} paddingAngle={2}>
-                  {licenseMix.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                <Pie data={byType} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2}>
+                  {byType.map((_, i) => (
+                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                  ))}
                 </Pie>
-                <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 12 }} />
               </PieChart>
             </ResponsiveContainer>
+          </div>
+          <div className="mt-2 space-y-1">
+            {byType.map((b, i) => (
+              <div key={b.name} className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-2 text-slate-600">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                  {b.name}
+                </span>
+                <span className="font-medium text-slate-800">{b.value.toLocaleString()}</span>
+              </div>
+            ))}
           </div>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader title="Daily activations" subtitle="New device bindings" />
-          <div className="p-4 h-[260px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card className="p-5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-900">Top Customers (Cards Generated)</h3>
+            <button onClick={() => go("customers")} className="text-xs font-medium text-indigo-600 hover:underline">
+              View all
+            </button>
+          </div>
+          <div className="mt-4 h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={series14}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#64748b" }} />
-                <YAxis tick={{ fontSize: 11, fill: "#64748b" }} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
-                <Bar dataKey="Activations" fill="#8b5cf6" radius={[6, 6, 0, 0]} />
+              <BarChart data={top.map((t) => ({ name: t.customer!.company, value: t.cards }))} layout="vertical" margin={{ left: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: "#64748b" }} width={110} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 12 }} />
+                <Bar dataKey="value" fill="#6366f1" radius={[0, 6, 6, 0]} name="Cards" />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </Card>
 
-        <Card>
-          <CardHeader
-            title="Expiring soon"
-            subtitle="Within next 30 days"
-            action={<Link to="/licenses" className="text-xs font-medium text-indigo-600 hover:text-indigo-700 inline-flex items-center gap-1">View all <ArrowUpRight className="h-3 w-3" /></Link>}
-          />
-          <div className="divide-y divide-slate-100">
-            {expiringLicenses.length === 0 && (
-              <div className="p-6 text-center text-sm text-slate-500">No upcoming expirations 🎉</div>
-            )}
-            {expiringLicenses.map(({ l, days }) => {
-              const c = customers.find(c => c.id === l.customer_id);
-              const tone = days <= 7 ? "rose" : days <= 14 ? "amber" : "indigo";
+        <Card className="p-5">
+          <div className="flex items-center justify-between">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <AlertTriangle className="h-4 w-4 text-amber-500" /> Expiring Licenses (30 days)
+            </h3>
+            <button onClick={() => go("licenses")} className="text-xs font-medium text-indigo-600 hover:underline">
+              Manage
+            </button>
+          </div>
+          <div className="mt-4 max-h-64 space-y-2 overflow-y-auto">
+            {expiring.length === 0 && <p className="py-12 text-center text-sm text-slate-400">No licenses expiring soon.</p>}
+            {expiring.map((l) => {
+              const cust = db.customers.find((c) => c.id === l.customer_id);
               return (
-                <Link to={`/licenses?key=${l.license_key}`} key={l.id} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition">
-                  <AlertTriangle className={`h-4 w-4 ${days <= 7 ? "text-rose-500" : days <= 14 ? "text-amber-500" : "text-indigo-500"}`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="mono text-sm text-slate-900 truncate">{l.license_key}</div>
-                    <div className="text-xs text-slate-500 truncate">{c?.company} — {c?.name}</div>
+                <div key={l.id} className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50/60 p-3">
+                  <div>
+                    <p className="font-mono text-xs font-medium text-slate-800">{l.license_key}</p>
+                    <p className="text-xs text-slate-500">{cust?.company ?? "Unassigned"}</p>
                   </div>
-                  <Badge tone={tone as any}>in {Math.ceil(days)}d</Badge>
-                </Link>
+                  <div className="flex items-center gap-2">
+                    <TypeBadge type={l.license_type} />
+                    <div className="text-right">
+                      <p className="text-xs font-medium text-amber-600">{daysBetweenLabel(l.expires_at)}</p>
+                      <p className="text-[11px] text-slate-400">{fmtDate(l.expires_at)}</p>
+                    </div>
+                  </div>
+                </div>
               );
             })}
           </div>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader title="Top active customers" subtitle="By card volume (last 30 days)" />
-          <div className="divide-y divide-slate-100">
-            {topCustomers.length === 0 && <div className="p-6 text-center text-sm text-slate-500">No usage yet.</div>}
-            {topCustomers.map(({ customer, total }, i) => (
-              <div key={customer?.id ?? i} className="flex items-center gap-3 px-5 py-3">
-                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center text-xs font-bold">{i + 1}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-slate-900 truncate">{customer?.company ?? "—"}</div>
-                  <div className="text-xs text-slate-500 truncate">{customer?.name}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm font-semibold text-slate-900">{total.toLocaleString()}</div>
-                  <div className="text-[10px] text-slate-500 uppercase">events</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card>
-          <CardHeader title="Recent activity" subtitle="Audit log" />
-          <div className="divide-y divide-slate-100 max-h-[330px] overflow-y-auto">
-            {data.audit.slice(0, 12).map(a => (
-              <div key={a.id} className="px-5 py-3 flex items-start gap-3">
-                <div className="h-7 w-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 shrink-0 mt-0.5">
-                  <Activity className="h-3.5 w-3.5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm text-slate-900">
-                    <span className="font-medium">{a.actor}</span>{" "}
-                    <span className="text-slate-500">{a.action.toLowerCase().replace(/_/g, " ")}</span>{" "}
-                    <span className="mono text-xs text-slate-700">{a.target}</span>
-                  </div>
-                  <div className="text-xs text-slate-500">{formatDistanceToNow(new Date(a.created_at), { addSuffix: true })}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
+      <Card className="p-5">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-900">License Growth</h3>
+          <StatusBadge status="active" />
+        </div>
+        <div className="mt-4 h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={series.growth}>
+              <defs>
+                <linearGradient id="gGrowth" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#94a3b8" }} interval={4} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} tickLine={false} axisLine={false} width={30} />
+              <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 12 }} />
+              <Area type="monotone" dataKey="value" stroke="#10b981" strokeWidth={2} fill="url(#gGrowth)" name="Total Licenses" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
     </div>
   );
 }

@@ -1,164 +1,132 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
-  AreaChart, Area, BarChart, Bar, LineChart, Line, ResponsiveContainer,
-  XAxis, YAxis, Tooltip, CartesianGrid, Legend,
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from "recharts";
-import { useStore } from "../lib/store";
-import { Card, CardHeader, Select } from "../components/ui";
-import { format, isSameDay, startOfDay, subDays } from "date-fns";
+import { useDB } from "../lib/hooks";
+import { dailySeries, topCustomers } from "../lib/analytics";
+import { Card } from "../components/ui";
 
-export default function Analytics() {
-  const { data } = useStore();
-  const [range, setRange] = useState(30);
+const RANGES = [
+  { label: "7 Days", days: 7 },
+  { label: "14 Days", days: 14 },
+  { label: "30 Days", days: 30 },
+];
 
-  const series = useMemo(() => {
-    const days = Array.from({ length: range }).map((_, i) => startOfDay(subDays(new Date(), range - 1 - i)));
-    return days.map(d => {
-      const dayUsage = data.usage.filter(u => isSameDay(new Date(u.created_at), d));
-      const dayActs = data.activations.filter(a => isSameDay(new Date(a.activated_at), d));
-      return {
-        date: format(d, "MMM d"),
-        Generated: dayUsage.filter(u => u.event_type === "CARD_GENERATED").reduce((s, u) => s + u.event_count, 0),
-        Printed:   dayUsage.filter(u => u.event_type === "CARD_PRINTED").reduce((s, u) => s + u.event_count, 0),
-        PDFs:      dayUsage.filter(u => u.event_type === "PDF_IMPORTED").reduce((s, u) => s + u.event_count, 0),
-        Batches:   dayUsage.filter(u => u.event_type === "BATCH_JOB").reduce((s, u) => s + u.event_count, 0),
-        Activations: dayActs.length,
-      };
-    });
-  }, [data, range]);
+function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <Card className="p-5">
+      <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+      <div className="mt-4 h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          {children as React.ReactElement}
+        </ResponsiveContainer>
+      </div>
+    </Card>
+  );
+}
 
-  const growth = useMemo(() => {
-    const days = Array.from({ length: range }).map((_, i) => startOfDay(subDays(new Date(), range - 1 - i)));
-    let cumulative = data.licenses.filter(l => new Date(l.created_at) < days[0]).length;
-    return days.map(d => {
-      const created = data.licenses.filter(l => isSameDay(new Date(l.created_at), d)).length;
-      cumulative += created;
-      return { date: format(d, "MMM d"), Licenses: cumulative, New: created };
-    });
-  }, [data, range]);
+const axis = { tick: { fontSize: 11, fill: "#94a3b8" }, tickLine: false, axisLine: false };
+const tooltip = { contentStyle: { borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 12 } };
 
-  const topCustomers = useMemo(() => {
-    const map = new Map<string, number>();
-    data.usage.forEach(u => {
-      const lic = data.licenses.find(l => l.id === u.license_id);
-      if (!lic) return;
-      map.set(lic.customer_id, (map.get(lic.customer_id) ?? 0) + u.event_count);
-    });
-    return Array.from(map)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
-      .map(([cid, v]) => ({ name: data.customers.find(c => c.id === cid)?.company ?? "Unknown", events: v }));
-  }, [data]);
+export function Analytics() {
+  const db = useDB();
+  const [days, setDays] = useState(30);
+  const series = dailySeries(db, days);
+  const top = topCustomers(db, 8);
+
+  const totalGenerated = series.generated.reduce((s, d) => s + d.value, 0);
+  const totalPrinted = series.printed.reduce((s, d) => s + d.value, 0);
+  const totalActs = series.acts.reduce((s, d) => s + d.value, 0);
 
   return (
-    <div className="p-6 space-y-5 max-w-[1600px] mx-auto">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Usage Analytics</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Card generation, printing & license growth trends.</p>
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div className="flex gap-2">
+          {RANGES.map((r) => (
+            <button
+              key={r.days}
+              onClick={() => setDays(r.days)}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${days === r.days ? "bg-indigo-600 text-white" : "bg-white text-slate-600 ring-1 ring-inset ring-slate-300 hover:bg-slate-50"}`}
+            >
+              {r.label}
+            </button>
+          ))}
         </div>
-        <Select value={String(range)} onChange={e => setRange(parseInt(e.target.value))} className="w-auto">
-          <option value="7">Last 7 days</option>
-          <option value="14">Last 14 days</option>
-          <option value="30">Last 30 days</option>
-          <option value="90">Last 90 days</option>
-        </Select>
       </div>
 
-      <Card>
-        <CardHeader title="Card generation activity" subtitle="Daily totals across all licenses" />
-        <div className="p-4 h-[340px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={series}>
-              <defs>
-                <linearGradient id="ag1" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#6366f1" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="#6366f1" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="ag2" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#10b981" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#64748b" }} />
-              <YAxis tick={{ fontSize: 11, fill: "#64748b" }} />
-              <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Area type="monotone" dataKey="Generated" stroke="#6366f1" strokeWidth={2} fill="url(#ag1)" />
-              <Area type="monotone" dataKey="Printed"   stroke="#10b981" strokeWidth={2} fill="url(#ag2)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </Card>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader title="Daily activations" />
-          <div className="p-4 h-[280px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={series}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#64748b" }} />
-                <YAxis tick={{ fontSize: 11, fill: "#64748b" }} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
-                <Bar dataKey="Activations" fill="#8b5cf6" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-
-        <Card>
-          <CardHeader title="License growth (cumulative)" />
-          <div className="p-4 h-[280px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={growth}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#64748b" }} />
-                <YAxis tick={{ fontSize: 11, fill: "#64748b" }} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Line type="monotone" dataKey="Licenses" stroke="#0ea5e9" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="New" stroke="#f59e0b" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
+      <div className="grid grid-cols-3 gap-4">
+        <Card className="p-4"><p className="text-sm text-slate-500">Cards Generated</p><p className="mt-1 text-2xl font-bold text-indigo-600">{totalGenerated.toLocaleString()}</p></Card>
+        <Card className="p-4"><p className="text-sm text-slate-500">Cards Printed</p><p className="mt-1 text-2xl font-bold text-fuchsia-600">{totalPrinted.toLocaleString()}</p></Card>
+        <Card className="p-4"><p className="text-sm text-slate-500">Activations</p><p className="mt-1 text-2xl font-bold text-sky-600">{totalActs.toLocaleString()}</p></Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader title="Event mix" subtitle="PDF imports, batch jobs & more" />
-          <div className="p-4 h-[280px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={series}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#64748b" }} />
-                <YAxis tick={{ fontSize: 11, fill: "#64748b" }} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="PDFs" stackId="a" fill="#0ea5e9" />
-                <Bar dataKey="Batches" stackId="a" fill="#f59e0b" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <ChartCard title="Daily Card Generation">
+          <AreaChart data={series.generated}>
+            <defs>
+              <linearGradient id="aGen" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#6366f1" stopOpacity={0.3} /><stop offset="100%" stopColor="#6366f1" stopOpacity={0} /></linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+            <XAxis dataKey="date" {...axis} interval={Math.floor(days / 7)} />
+            <YAxis {...axis} width={36} />
+            <Tooltip {...tooltip} />
+            <Area type="monotone" dataKey="value" name="Generated" stroke="#6366f1" strokeWidth={2} fill="url(#aGen)" />
+          </AreaChart>
+        </ChartCard>
 
-        <Card>
-          <CardHeader title="Top customers by volume" />
-          <div className="p-4 h-[280px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={topCustomers} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis type="number" tick={{ fontSize: 11, fill: "#64748b" }} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: "#64748b" }} width={140} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
-                <Bar dataKey="events" fill="#6366f1" radius={[0, 6, 6, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
+        <ChartCard title="Daily Printing">
+          <AreaChart data={series.printed}>
+            <defs>
+              <linearGradient id="aPr" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#d946ef" stopOpacity={0.3} /><stop offset="100%" stopColor="#d946ef" stopOpacity={0} /></linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+            <XAxis dataKey="date" {...axis} interval={Math.floor(days / 7)} />
+            <YAxis {...axis} width={36} />
+            <Tooltip {...tooltip} />
+            <Area type="monotone" dataKey="value" name="Printed" stroke="#d946ef" strokeWidth={2} fill="url(#aPr)" />
+          </AreaChart>
+        </ChartCard>
+
+        <ChartCard title="Daily Activations">
+          <BarChart data={series.acts}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+            <XAxis dataKey="date" {...axis} interval={Math.floor(days / 7)} />
+            <YAxis {...axis} width={30} allowDecimals={false} />
+            <Tooltip {...tooltip} />
+            <Bar dataKey="value" name="Activations" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ChartCard>
+
+        <ChartCard title="License Growth (Cumulative)">
+          <LineChart data={series.growth}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+            <XAxis dataKey="date" {...axis} interval={Math.floor(days / 7)} />
+            <YAxis {...axis} width={30} />
+            <Tooltip {...tooltip} />
+            <Line type="monotone" dataKey="value" name="Licenses" stroke="#10b981" strokeWidth={2.5} dot={false} />
+          </LineChart>
+        </ChartCard>
       </div>
+
+      <ChartCard title="Top Active Customers (Cards Generated)">
+        <BarChart data={top.map((t) => ({ name: t.customer!.company, value: t.cards }))} layout="vertical" margin={{ left: 20 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+          <XAxis type="number" {...axis} />
+          <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: "#64748b" }} width={130} tickLine={false} axisLine={false} />
+          <Tooltip {...tooltip} />
+          <Bar dataKey="value" name="Cards" fill="#6366f1" radius={[0, 6, 6, 0]} />
+        </BarChart>
+      </ChartCard>
     </div>
   );
 }

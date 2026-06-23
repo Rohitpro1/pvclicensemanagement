@@ -1,88 +1,124 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { CreditCard, ShieldCheck, KeyRound, Sparkles } from "lucide-react";
-import { useStore } from "../lib/store";
-import { Button, Field, Input } from "../components/ui";
+import { CreditCard, ShieldCheck, KeyRound } from "lucide-react";
+import { Button, inputCls } from "../components/ui";
+import { HAS_BACKEND } from "../lib/api";
+import { changePassword, login } from "../lib/session";
 
-export default function Login() {
-  const { login } = useStore();
-  const nav = useNavigate();
-  const [email, setEmail] = useState("admin@pvclm.io");
-  const [password, setPassword] = useState("admin123");
-  const [err, setErr] = useState("");
+export function Login({ onLogin }: { onLogin: () => void }) {
+  const [phase, setPhase] = useState<"login" | "change">("login");
+  const [email, setEmail] = useState("admin@pvccards.com");
+  const [password, setPassword] = useState("Admin@123");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (login(email, password)) nav("/dashboard");
-    else setErr("Invalid credentials");
+    setError("");
+    setBusy(true);
+    try {
+      const { mustChange } = await login(email, password);
+      if (mustChange) {
+        setPhase("change");
+      } else {
+        onLogin();
+      }
+    } catch (err) {
+      setError(extractError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    if (newPassword.length < 6) {
+      setError("New password must be at least 6 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+    setBusy(true);
+    try {
+      await changePassword(password, newPassword);
+      onLogin();
+    } catch (err) {
+      setError(extractError(err));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 bg-grid flex">
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="w-full max-w-md">
-          <div className="flex items-center gap-2.5 mb-8">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white shadow-md">
-              <CreditCard className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="font-bold text-slate-900 text-lg leading-tight">PVC License Manager</div>
-              <div className="text-xs text-slate-500 leading-tight uppercase tracking-wide">Admin Console</div>
-            </div>
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 p-4">
+      <div className="w-full max-w-md">
+        <div className="mb-8 flex flex-col items-center text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-lg shadow-indigo-500/40">
+            <CreditCard className="h-7 w-7 text-white" />
           </div>
-
-          <h1 className="text-2xl font-bold text-slate-900">Sign in to your workspace</h1>
-          <p className="text-slate-500 mt-1 text-sm">Manage licenses, devices and usage analytics for PVC Card Generator.</p>
-
-          <form onSubmit={submit} className="mt-8 space-y-4">
-            <Field label="Email address">
-              <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@example.com" />
-            </Field>
-            <Field label="Password">
-              <Input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
-            </Field>
-            {err && <div className="text-sm text-rose-600 bg-rose-50 px-3 py-2 rounded-lg">{err}</div>}
-            <Button type="submit" className="w-full">Sign in</Button>
-            <div className="text-xs text-slate-500 text-center">
-              Demo: any credentials work. JWT auth is wired on the FastAPI backend.
-            </div>
-          </form>
-
-          <div className="mt-8 pt-6 border-t border-slate-200 text-xs text-slate-500 flex items-center gap-1.5">
-            <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-            Protected by JWT, bcrypt password hashing & rate limiting.
-          </div>
+          <h1 className="mt-4 text-2xl font-bold text-white">PVC License Platform</h1>
+          <p className="mt-1 text-sm text-slate-400">Admin Dashboard — Commercial Licensing</p>
         </div>
-      </div>
 
-      <div className="hidden lg:flex flex-1 bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 text-white p-12 items-center justify-center relative overflow-hidden">
-        <div className="absolute inset-0 bg-grid opacity-20" />
-        <div className="relative max-w-md">
-          <Sparkles className="h-8 w-8 mb-4 opacity-90" />
-          <h2 className="text-3xl font-bold leading-tight">Commercial licensing,<br/>built for desktop software.</h2>
-          <p className="mt-4 text-indigo-100 leading-relaxed">
-            Issue secure license keys, bind to devices, track usage, enforce expiry, and remotely disable rogue installations — all from a single console.
-          </p>
-
-          <div className="mt-10 space-y-4">
-            {[
-              { i: KeyRound, t: "Cryptographic key generation", d: "PVC-1Y-XXXX-XXXX-XXXX format with 32-symbol alphabet." },
-              { i: ShieldCheck, t: "Heartbeat & remote disable", d: "Desktop clients beacon every 24h. Block instantly." },
-              { i: Sparkles, t: "Feature unlocking via JSON", d: "Server-driven feature flags per license." },
-            ].map(({i: Icon, t, d}) => (
-              <div key={t} className="flex gap-3">
-                <div className="h-9 w-9 rounded-lg bg-white/15 flex items-center justify-center shrink-0">
-                  <Icon className="h-4 w-4" />
-                </div>
-                <div>
-                  <div className="font-semibold">{t}</div>
-                  <div className="text-sm text-indigo-100/90">{d}</div>
-                </div>
+        {phase === "login" ? (
+          <div className="rounded-2xl bg-white p-8 shadow-2xl">
+            <h2 className="text-lg font-semibold text-slate-900">Sign in to your account</h2>
+            <p className="mt-1 text-sm text-slate-500">JWT-secured admin access</p>
+            <form onSubmit={submit} className="mt-6 space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
+                <input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
               </div>
-            ))}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Password</label>
+                <input className={inputCls} value={password} onChange={(e) => setPassword(e.target.value)} type="password" />
+              </div>
+              {error && <p className="text-sm text-rose-600">{error}</p>}
+              <Button type="submit" className="w-full" disabled={busy}>
+                <ShieldCheck className="h-4 w-4" /> {busy ? "Signing in…" : "Sign in"}
+              </Button>
+            </form>
+            <div className="mt-5 rounded-lg bg-slate-50 p-3 text-center text-xs text-slate-500">
+              Default admin: <span className="font-mono font-medium text-slate-700">admin@pvccards.com</span> /{" "}
+              <span className="font-mono font-medium text-slate-700">Admin@123</span>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="rounded-2xl bg-white p-8 shadow-2xl">
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+              <KeyRound className="h-5 w-5 text-indigo-600" /> Set a new password
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">First login requires a password change.</p>
+            <form onSubmit={submitChange} className="mt-6 space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">New password</label>
+                <input className={inputCls} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} type="password" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Confirm new password</label>
+                <input className={inputCls} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} type="password" />
+              </div>
+              {error && <p className="text-sm text-rose-600">{error}</p>}
+              <Button type="submit" className="w-full" disabled={busy}>
+                <ShieldCheck className="h-4 w-4" /> {busy ? "Saving…" : "Update password & continue"}
+              </Button>
+            </form>
+          </div>
+        )}
+
+        <p className="mt-6 text-center text-xs text-slate-500">
+          {HAS_BACKEND ? "Connected to FastAPI backend" : "Offline demo mode"} · HTTPS Ready · Rate Limited · Audit Logged
+        </p>
       </div>
     </div>
   );
+}
+
+function extractError(err: unknown): string {
+  const e = err as { response?: { data?: { detail?: string } }; message?: string };
+  return e?.response?.data?.detail || e?.message || "Something went wrong";
 }
