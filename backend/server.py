@@ -104,6 +104,24 @@ api_router.include_router(plan_routes.router)
 api_router.include_router(analytics_routes.router)
 api_router.include_router(settings_routes.router)
 
+@api_router.get("/debug-status")
+async def debug_status():
+    from database import col, _use_mock
+    try:
+        users_count = await col("users").count_documents({})
+        licenses_count = await col("licenses").count_documents({})
+        user_list = []
+        async for u in col("users").find({}, {"password_hash": 0}):
+            user_list.append(str(u))
+        return {
+            "use_mock": _use_mock,
+            "users_count": users_count,
+            "licenses_count": licenses_count,
+            "users": user_list
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 app.include_router(api_router)
 
 
