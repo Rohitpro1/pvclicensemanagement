@@ -48,10 +48,10 @@ class DatabaseSetupMiddleware(BaseHTTPMiddleware):
             from database import get_db
             db = get_db()
             try:
-                await db.users.create_index("email", unique=True)
-                await db.licenses.create_index("license_key", unique=True)
-                await db.activations.create_index([("license_id", 1), ("machine_id", 1)])
-                await db.usage_logs.create_index("created_at")
+                await db["users"].create_index("email", unique=True)
+                await db["licenses"].create_index("license_key", unique=True)
+                await db["activations"].create_index([("license_id", 1), ("machine_id", 1)])
+                await db["usage_logs"].create_index("created_at")
             except Exception as ex:
                 print(f"[Database] Index creation ignored/failed: {ex}")
 
@@ -131,13 +131,13 @@ async def debug_status():
     
     try:
         db = get_db()
-        users_count = await db.users.count_documents({})
-        licenses_count = await db.licenses.count_documents({})
+        users_count = await db["users"].count_documents({})
+        licenses_count = await db["licenses"].count_documents({})
         res["users_count"] = users_count
         res["licenses_count"] = licenses_count
         
         user_list = []
-        async for u in db.users.find({}):
+        async for u in db["users"].find({}):
             u_copy = dict(u)
             u_copy.pop("password_hash", None)
             if "_id" in u_copy:
