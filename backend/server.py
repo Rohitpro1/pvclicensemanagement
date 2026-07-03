@@ -45,21 +45,23 @@ class DatabaseSetupMiddleware(BaseHTTPMiddleware):
         global _db_setup_done
         if not _db_setup_done:
             _db_setup_done = True
-            from database import get_db, _use_mock
+            from database import get_db
             db = get_db()
-            if not _use_mock:
-                try:
-                    await db.users.create_index("email", unique=True)
-                    await db.licenses.create_index("license_key", unique=True)
-                    await db.activations.create_index([("license_id", 1), ("machine_id", 1)])
-                    await db.usage_logs.create_index("created_at")
-                    
-                    from services.seed_service import ensure_admin, seed_sample_data
-                    await ensure_admin()
-                    await seed_sample_data()
-                    print("[Database] Lazy Vercel database setup completed.")
-                except Exception as ex:
-                    print(f"[Database] Lazy Vercel setup error: {ex}")
+            try:
+                await db.users.create_index("email", unique=True)
+                await db.licenses.create_index("license_key", unique=True)
+                await db.activations.create_index([("license_id", 1), ("machine_id", 1)])
+                await db.usage_logs.create_index("created_at")
+            except Exception as ex:
+                print(f"[Database] Index creation ignored/failed: {ex}")
+
+            try:
+                from services.seed_service import ensure_admin, seed_sample_data
+                await ensure_admin()
+                await seed_sample_data()
+                print("[Database] Lazy Vercel database setup completed.")
+            except Exception as ex:
+                print(f"[Database] Lazy Vercel setup error: {ex}")
         return await call_next(request)
 
 app.add_middleware(DatabaseSetupMiddleware)
