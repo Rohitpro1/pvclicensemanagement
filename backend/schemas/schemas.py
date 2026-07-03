@@ -63,29 +63,40 @@ class PlanInput(BaseModel):
 
 
 # ---------- Desktop client APIs ----------
+class HardwareProfile(BaseModel):
+    uuid: Optional[str] = ""
+    bios: Optional[str] = ""
+    cpu: Optional[str] = ""
+    disk: Optional[str] = ""
+
+
 class ActivateInput(BaseModel):
     license_key: str
     machine_id: str
     machine_name: str
     software_version: str = ""
+    hardware_profile: Optional[HardwareProfile] = None
 
 
 class ValidateInput(BaseModel):
-    license_key: str
+    license_key: Optional[str] = None
     machine_id: str
+    activation_token: Optional[str] = None
 
 
 class HeartbeatInput(BaseModel):
-    license_key: str
+    license_key: Optional[str] = None
     machine_id: str
     software_version: str = ""
+    activation_token: Optional[str] = None
 
 
 class UsageInput(BaseModel):
-    license_key: str
+    license_key: Optional[str] = None
     machine_id: str
     event_type: str
     event_count: int = 1
+    activation_token: Optional[str] = None
 
 
 # ---------- Settings ----------
