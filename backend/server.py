@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
@@ -49,14 +49,23 @@ async def health():
     return {"status": "healthy"}
 
 
-app.include_router(auth_routes.router)
-app.include_router(db_routes.router)
-app.include_router(license_routes.router)
-app.include_router(activation_routes.router)
-app.include_router(customer_routes.router)
-app.include_router(plan_routes.router)
-app.include_router(analytics_routes.router)
-app.include_router(settings_routes.router)
+# API base router
+api_router = APIRouter(prefix="/api")
+
+# Version 1 API routes (device activation) under /api/v1
+v1_router = APIRouter(prefix="/v1")
+v1_router.include_router(activation_routes.router)
+
+api_router.include_router(auth_routes.router)
+api_router.include_router(db_routes.router)
+api_router.include_router(license_routes.router)
+api_router.include_router(v1_router)
+api_router.include_router(customer_routes.router)
+api_router.include_router(plan_routes.router)
+api_router.include_router(analytics_routes.router)
+api_router.include_router(settings_routes.router)
+
+app.include_router(api_router)
 
 
 if __name__ == "__main__":
