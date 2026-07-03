@@ -106,21 +106,49 @@ api_router.include_router(settings_routes.router)
 
 @api_router.get("/debug-status")
 async def debug_status():
-    from database import col, _use_mock
+    from config import settings
+    from database import get_db, _use_mock
+    import traceback
+    
+    raw_uri = settings.MONGO_URI or ""
+    redacted_uri = raw_uri
+    if "@" in raw_uri:
+        try:
+            parts = raw_uri.split("@")
+            prefix = parts[0]
+            suffix = parts[1]
+            if ":" in prefix:
+                sub_parts = prefix.split(":")
+                redacted_uri = f"{sub_parts[0]}:{sub_parts[1]}:****@{suffix}"
+        except Exception:
+            redacted_uri = "invalid-uri-format"
+            
+    res = {
+        "mongo_uri": redacted_uri,
+        "mongo_db": settings.MONGO_DB,
+        "use_mock": _use_mock,
+    }
+    
     try:
-        users_count = await col("users").count_documents({})
-        licenses_count = await col("licenses").count_documents({})
+        db = get_db()
+        users_count = await db.users.count_documents({})
+        licenses_count = await db.licenses.count_documents({})
+        res["users_count"] = users_count
+        res["licenses_count"] = licenses_count
+        
         user_list = []
-        async for u in col("users").find({}, {"password_hash": 0}):
-            user_list.append(str(u))
-        return {
-            "use_mock": _use_mock,
-            "users_count": users_count,
-            "licenses_count": licenses_count,
-            "users": user_list
-        }
+        async for u in db.users.find({}):
+            u_copy = dict(u)
+            u_copy.pop("password_hash", None)
+            if "_id" in u_copy:
+                u_copy["_id"] = str(u_copy["_id"])
+            user_list.append(u_copy)
+        res["users"] = user_list
     except Exception as e:
-        return {"error": str(e)}
+        res["error"] = str(e)
+        res["traceback"] = traceback.format_exc()
+        
+    return res
 
 app.include_router(api_router)
 
