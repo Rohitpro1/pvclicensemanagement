@@ -236,10 +236,8 @@ async def close_mongo_connection() -> None:
     if _client:
         _client.close()
 
-_seeded = False
-
 def get_db():
-    global _client, _db, _use_mock, _mock_db, _seeded
+    global _client, _db, _use_mock, _mock_db
     if _use_mock:
         return _mock_db
     if _db is None:
@@ -251,37 +249,6 @@ def get_db():
             db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mock_db.json")
             _mock_db = MockDatabase(db_path)
             return _mock_db
-
-    if not _seeded and not _use_mock:
-        _seeded = True
-        try:
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            # Lazy indexes creation
-            async def run_setup():
-                try:
-                    await _db.users.create_index("email", unique=True)
-                    await _db.licenses.create_index("license_key", unique=True)
-                    await _db.activations.create_index([("license_id", 1), ("machine_id", 1)])
-                    await _db.usage_logs.create_index("created_at")
-                    
-                    from services.seed_service import ensure_admin, seed_sample_data
-                    await ensure_admin()
-                    await seed_sample_data()
-                except Exception as ex:
-                    print(f"[Database] Lazy setup error: {ex}")
-
-            if loop.is_running():
-                loop.create_task(run_setup())
-            else:
-                loop.run_until_complete(run_setup())
-        except Exception as e:
-            print(f"[Database] Lazy setup scheduling failed: {e}")
-
     return _db
 
 def col(name: str):
