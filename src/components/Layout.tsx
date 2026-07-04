@@ -12,6 +12,7 @@ import {
   LogOut,
   Menu,
   X,
+  ArrowUpCircle,
 } from "lucide-react";
 import { cn } from "../utils/cn";
 
@@ -23,7 +24,8 @@ export type Page =
   | "analytics"
   | "plans"
   | "simulator"
-  | "settings";
+  | "settings"
+  | "updates";
 
 const NAV: { id: Page; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -32,6 +34,7 @@ const NAV: { id: Page; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "customers", label: "Customers", icon: Users },
   { id: "analytics", label: "Usage Analytics", icon: BarChart3 },
   { id: "plans", label: "Subscription Plans", icon: Package },
+  { id: "updates", label: "Software Updates", icon: ArrowUpCircle },
   { id: "simulator", label: "Desktop Simulator", icon: TerminalSquare },
   { id: "settings", label: "Settings", icon: Settings },
 ];

@@ -64,9 +64,10 @@ class MockCollection:
         except Exception:
             pass
 
-    async def find_one(self, query):
+    async def find_one(self, query, **kwargs):
         data = self._load_data()
         docs = data.get(self.name, [])
+        matched_docs = []
         for doc in docs:
             match = True
             for k, v in query.items():
@@ -81,8 +82,18 @@ class MockCollection:
                         match = False
                         break
             if match:
-                return doc
-        return None
+                matched_docs.append(doc)
+
+        if not matched_docs:
+            return None
+
+        sort_kwargs = kwargs.get("sort")
+        if sort_kwargs:
+            for key, direction in reversed(sort_kwargs):
+                reverse = (direction == -1)
+                matched_docs.sort(key=lambda x: x.get(key, "") or "", reverse=reverse)
+
+        return matched_docs[0]
 
     async def insert_one(self, doc):
         data = self._load_data()

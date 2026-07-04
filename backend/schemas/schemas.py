@@ -102,3 +102,14 @@ class UsageInput(BaseModel):
 # ---------- Settings ----------
 class SettingsInput(BaseModel):
     data: dict[str, Any]
+
+
+# ---------- Update ----------
+class UpdateInput(BaseModel):
+    version: str
+    release_notes: str = ""
+    download_url: str
+    sha256: str = ""
+    mandatory: bool = False
+    minimum_supported_version: str = ""
+    status: str = "draft"  # draft | published | archived

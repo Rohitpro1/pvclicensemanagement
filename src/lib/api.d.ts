@@ -53,3 +53,12 @@ export const deviceApi: {
 export const settingsApi: { get: () => Promise<any>; update: (data: any) => Promise<any> };
 
 export const adminApi: { reset: () => Promise<any> };
+
+export const updatesApi: {
+  list: () => Promise<any>;
+  create: (payload: any) => Promise<any>;
+  update: (id: string, payload: any) => Promise<any>;
+  remove: (id: string) => Promise<any>;
+  publish: (id: string) => Promise<any>;
+  archive: (id: string) => Promise<any>;
+};

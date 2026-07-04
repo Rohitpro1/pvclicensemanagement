@@ -17,6 +17,7 @@ async def get_db(user: dict = Depends(get_current_user)):
     usage = await col("usage_logs").find().sort("created_at", -1).limit(20000).to_list(None)
     plans = await col("subscription_plans").find().to_list(None)
     audit = await col("audit_logs").find().sort("created_at", -1).limit(100).to_list(None)
+    updates = await col("updates").find().sort("created_at", -1).to_list(None)
     return {
         "customers": serialize_many(customers),
         "licenses": serialize_many(licenses),
@@ -24,6 +25,7 @@ async def get_db(user: dict = Depends(get_current_user)):
         "usage": serialize_many(usage),
         "plans": serialize_many(plans),
         "audit": serialize_many(audit),
+        "updates": serialize_many(updates),
     }
 
 

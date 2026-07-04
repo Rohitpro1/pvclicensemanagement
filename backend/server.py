@@ -15,7 +15,7 @@ from config import settings
 from database import close_mongo_connection, connect_to_mongo
 from routes import (activation_routes, analytics_routes, auth_routes,
                     customer_routes, db_routes, license_routes, plan_routes,
-                    settings_routes)
+                    settings_routes, update_routes)
 from services.seed_service import ensure_admin, seed_sample_data
 
 
@@ -94,6 +94,7 @@ api_router = APIRouter(prefix="/api")
 # Version 1 API routes (device activation) under /api/v1
 v1_router = APIRouter(prefix="/v1")
 v1_router.include_router(activation_routes.router)
+v1_router.include_router(update_routes.client_router)
 
 api_router.include_router(auth_routes.router)
 api_router.include_router(db_routes.router)
@@ -103,52 +104,7 @@ api_router.include_router(customer_routes.router)
 api_router.include_router(plan_routes.router)
 api_router.include_router(analytics_routes.router)
 api_router.include_router(settings_routes.router)
-
-@api_router.get("/debug-status")
-async def debug_status():
-    from config import settings
-    from database import get_db, _use_mock
-    import traceback
-    
-    raw_uri = settings.MONGO_URI or ""
-    redacted_uri = raw_uri
-    if "@" in raw_uri:
-        try:
-            parts = raw_uri.split("@")
-            prefix = parts[0]
-            suffix = parts[1]
-            if ":" in prefix:
-                sub_parts = prefix.split(":")
-                redacted_uri = f"{sub_parts[0]}:{sub_parts[1]}:****@{suffix}"
-        except Exception:
-            redacted_uri = "invalid-uri-format"
-            
-    res = {
-        "mongo_uri": redacted_uri,
-        "mongo_db": settings.MONGO_DB,
-        "use_mock": _use_mock,
-    }
-    
-    try:
-        db = get_db()
-        users_count = await db["users"].count_documents({})
-        licenses_count = await db["licenses"].count_documents({})
-        res["users_count"] = users_count
-        res["licenses_count"] = licenses_count
-        
-        user_list = []
-        async for u in db["users"].find({}):
-            u_copy = dict(u)
-            u_copy.pop("password_hash", None)
-            if "_id" in u_copy:
-                u_copy["_id"] = str(u_copy["_id"])
-            user_list.append(u_copy)
-        res["users"] = user_list
-    except Exception as e:
-        res["error"] = str(e)
-        res["traceback"] = traceback.format_exc()
-        
-    return res
+api_router.include_router(update_routes.admin_router)
 
 app.include_router(api_router)
 

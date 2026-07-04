@@ -9,6 +9,7 @@ import { Analytics } from "./pages/Analytics";
 import { Plans } from "./pages/Plans";
 import { Simulator } from "./pages/Simulator";
 import { Settings } from "./pages/Settings";
+import { Updates } from "./pages/Updates";
 import { hasSession, logout, restoreSession } from "./lib/session";
 
 export default function App() {
@@ -48,6 +49,7 @@ export default function App() {
       {page === "plans" && <Plans />}
       {page === "simulator" && <Simulator />}
       {page === "settings" && <Settings />}
+      {page === "updates" && <Updates />}
     </Layout>
   );
 }

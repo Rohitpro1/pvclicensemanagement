@@ -87,6 +87,20 @@ export interface AuditLog {
   created_at: string;
 }
 
+export interface SoftwareUpdate {
+  id: string;
+  version: string;
+  release_notes: string;
+  download_url: string;
+  sha256: string;
+  mandatory: boolean;
+  published_at: string | null;
+  minimum_supported_version: string;
+  status: "draft" | "published" | "archived";
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DB {
   customers: Customer[];
   licenses: License[];
@@ -94,4 +108,5 @@ export interface DB {
   usage: UsageLog[];
   plans: SubscriptionPlan[];
   audit: AuditLog[];
+  updates: SoftwareUpdate[];
 }

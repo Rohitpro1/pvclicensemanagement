@@ -18,6 +18,7 @@ import {
   plansApi,
   deviceApi,
   adminApi,
+  updatesApi,
 } from "./api";
 
 const STORAGE_KEY = "pvc_license_platform_v1";
@@ -204,12 +205,12 @@ function seed(): DB {
     { id: uid(), action: "LICENSE_CREATED", detail: "Yearly license created for ID Prints India", actor: "admin@pvccards.com", created_at: iso(addDays(now, -20)) },
   ];
 
-  return { customers, licenses, activations, usage, plans, audit };
+  return { customers, licenses, activations, usage, plans, audit, updates: [] };
 }
 
 /* ---------------- State + persistence ---------------- */
 
-const EMPTY_DB: DB = { customers: [], licenses: [], activations: [], usage: [], plans: [], audit: [] };
+const EMPTY_DB: DB = { customers: [], licenses: [], activations: [], usage: [], plans: [], audit: [], updates: [] };
 
 let db: DB;
 
@@ -266,6 +267,7 @@ export async function hydrate(): Promise<void> {
       usage: data.usage ?? [],
       plans: data.plans ?? [],
       audit: data.audit ?? [],
+      updates: data.updates ?? [],
     };
     notify();
   } catch (e) {
@@ -454,6 +456,95 @@ export function deletePlan(id: string) {
   db.plans = db.plans.filter((p) => p.id !== id);
   persist();
   if (HAS_BACKEND) bg(plansApi.remove(id));
+}
+
+/* ---------------- Update operations ---------------- */
+
+export function createUpdate(input: {
+  version: string;
+  release_notes: string;
+  download_url: string;
+  sha256: string;
+  mandatory: boolean;
+  minimum_supported_version: string;
+}): SoftwareUpdate {
+  const up: SoftwareUpdate = {
+    id: uid("up"),
+    version: input.version,
+    release_notes: input.release_notes,
+    download_url: input.download_url,
+    sha256: input.sha256,
+    mandatory: input.mandatory,
+    minimum_supported_version: input.minimum_supported_version,
+    status: "draft",
+    published_at: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  db.updates.unshift(up);
+  audit("UPDATE_CREATED", `Version ${up.version}`);
+  persist();
+  if (HAS_BACKEND) {
+    bg(updatesApi.create({
+      version: up.version,
+      release_notes: up.release_notes,
+      download_url: up.download_url,
+      sha256: up.sha256,
+      mandatory: up.mandatory,
+      minimum_supported_version: up.minimum_supported_version,
+      status: up.status,
+    }));
+  }
+  return up;
+}
+
+export function updateUpdate(id: string, patch: Partial<SoftwareUpdate>) {
+  const up = db.updates.find((u) => u.id === id);
+  if (!up) return;
+  Object.assign(up, patch);
+  up.updated_at = new Date().toISOString();
+  audit("UPDATE_MODIFIED", `Version ${up.version}`);
+  persist();
+  if (HAS_BACKEND) {
+    bg(updatesApi.update(id, {
+      version: up.version,
+      release_notes: up.release_notes,
+      download_url: up.download_url,
+      sha256: up.sha256,
+      mandatory: up.mandatory,
+      minimum_supported_version: up.minimum_supported_version,
+      status: up.status,
+    }));
+  }
+}
+
+export function publishUpdate(id: string) {
+  const up = db.updates.find((u) => u.id === id);
+  if (!up) return;
+  up.status = "published";
+  up.published_at = new Date().toISOString();
+  up.updated_at = new Date().toISOString();
+  audit("UPDATE_PUBLISHED", `Version ${up.version}`);
+  persist();
+  if (HAS_BACKEND) bg(updatesApi.publish(id));
+}
+
+export function archiveUpdate(id: string) {
+  const up = db.updates.find((u) => u.id === id);
+  if (!up) return;
+  up.status = "archived";
+  up.updated_at = new Date().toISOString();
+  audit("UPDATE_ARCHIVED", `Version ${up.version}`);
+  persist();
+  if (HAS_BACKEND) bg(updatesApi.archive(id));
+}
+
+export function deleteUpdate(id: string) {
+  const up = db.updates.find((u) => u.id === id);
+  db.updates = db.updates.filter((u) => u.id !== id);
+  if (up) audit("UPDATE_DELETED", `Version ${up.version}`);
+  persist();
+  if (HAS_BACKEND) bg(updatesApi.remove(id));
 }
 
 /* ---------------- Simulated / real Desktop APIs ---------------- */

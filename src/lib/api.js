@@ -98,3 +98,12 @@ export const settingsApi = {
 export const adminApi = {
   reset: () => unwrap(http.post("/admin/reset")),
 };
+
+export const updatesApi = {
+  list: () => unwrap(http.get("/updates")),
+  create: (payload) => unwrap(http.post("/updates", payload)),
+  update: (id, payload) => unwrap(http.put(`/updates/${id}`, payload)),
+  remove: (id) => unwrap(http.delete(`/updates/${id}`)),
+  publish: (id) => unwrap(http.post(`/updates/${id}/publish`)),
+  archive: (id) => unwrap(http.post(`/updates/${id}/archive`)),
+};
